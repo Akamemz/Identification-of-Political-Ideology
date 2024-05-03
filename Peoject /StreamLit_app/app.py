@@ -16,13 +16,8 @@ import re
 # ******************************************
 #              Load Saved Models
 # ******************************************
-# Specify the file path for the saved model
-file_path = './model.pth'
-
 # Load the model
-model_RoBERTA = RobertaForSequenceClassification.from_pretrained("roberta-base", num_labels=3)
-model_RoBERTA.load_state_dict(torch.load(file_path))
-model_RoBERTA.eval()
+model = RobertaForSequenceClassification.from_pretrained('Akamemz/RoBERTA_bias_classification', num_labels=3)  # assuming 3 classes for classification
 
 tokenizer_RoBERTA = RobertaTokenizer.from_pretrained('roberta-base')
 
