@@ -17,7 +17,7 @@ import re
 #              Load Saved Models
 # ******************************************
 # Specify the file path for the saved model
-@st.cache(allow_output_mutation=True)
+@st.cache_resource()
 def load_model():
     # Download the model file first
     file_id = '1QulyuNsKiIBED0XGjUhsfVq7YiBXf2sf'
