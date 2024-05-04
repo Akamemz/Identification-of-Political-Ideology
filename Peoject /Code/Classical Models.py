@@ -6,7 +6,6 @@ import json
 
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import cohen_kappa_score
 from sklearn.metrics import accuracy_score, f1_score
 
 from sklearn.linear_model import LogisticRegression
@@ -59,7 +58,7 @@ def read_json_folder(folder_path):
 
     return df, json_data_list
 
-df, json_data_list = read_json_folder('Group Project/data/jsons')
+df, json_data_list = read_json_folder('./data/jsons')
 
 
 
@@ -142,15 +141,8 @@ predictions_naive = model_testing(model_naive, vectorizer_naive, X_test['content
 # ******************
 #   Metrics results
 # ******************
-def metrics(predictions, y_test):
-    kappa = cohen_kappa_score(y_test, predictions)
-    return kappa
-
-
 print('*'*25)
 print("Logistic Regression")
-kappa = metrics(predictions, y_test)
-print("Kappa score: ", kappa)
 
 # Accuracy of the results
 accuracy = accuracy_score(y_test, predictions)
@@ -171,8 +163,6 @@ print("F1-score (macro):", f1_macro)
 print()
 print('*'*25)
 print("Naive Regression")
-kappa_naive = metrics(predictions_naive, y_test)
-print("Kappa score: ", kappa_naive)
 
 # Accuracy of the results
 accuracy_naive = accuracy_score(y_test, predictions_naive)
@@ -221,38 +211,4 @@ plt.ylabel('Actual')
 plt.savefig('confusion_matrix_naive.png', dpi=300)  # Save the plot as a PNG file with 300 DPI
 plt.close()  # Close the plot to free up memory
 
-#%%
-import joblib
-import pickle
-
-# Save logistic regression model and vectorizer
-with open('logistic_regression_model.pkl', 'wb') as file:
-    pickle.dump(model, file)
-
-with open('tfidf_vectorizer.pkl', 'wb') as file:
-    pickle.dump(vectorizer, file)
-
-# Save naive Bayes model and vectorizer
-with open('naive_bayes_model.pkl', 'wb') as file:
-    pickle.dump(model_naive, file)
-
-with open('tfidf_vectorizer_naive.pkl', 'wb') as file:
-    pickle.dump(vectorizer_naive, file)
-
-#%%
-import pickle
-
-# Load logistic regression model and vectorizer
-with open('logistic_regression_model.pkl', 'rb') as file:
-    loaded_model_lr = pickle.load(file)
-
-with open('tfidf_vectorizer.pkl', 'rb') as file:
-    loaded_vectorizer_lr = pickle.load(file)
-
-# Load naive Bayes model and vectorizer
-with open('naive_bayes_model.pkl', 'rb') as file:
-    loaded_model_naive = pickle.load(file)
-
-with open('tfidf_vectorizer_naive.pkl', 'rb') as file:
-    loaded_vectorizer_naive = pickle.load(file)
 
