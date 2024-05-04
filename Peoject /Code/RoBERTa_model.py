@@ -58,7 +58,7 @@ def read_json_folder(folder_path):
 
 
 # Read JSON files and preprocess data
-df = read_json_folder('Group Project/data/jsons')
+df = read_json_folder('./data/jsons')
 
 
 # Drop unnecessary columns
@@ -284,7 +284,7 @@ sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', cbar=False)
 plt.xlabel('Predicted Label')
 plt.ylabel('True Label')
 plt.title('Confusion Matrix')
-# plt.savefig('confusion_matrix_RoBERTa.png') <--- Uncomment this section to save matrix in .png format
+plt.savefig('confusion_matrix_RoBERTa.png')
 plt.show()
 
 
