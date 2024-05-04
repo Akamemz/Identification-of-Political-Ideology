@@ -9,15 +9,36 @@ from newspaper import Article
 import torch
 from transformers import PegasusForConditionalGeneration, PegasusTokenizer
 from transformers import RobertaForSequenceClassification, RobertaTokenizer
-
+import gdown
 import re
 
 
 # ******************************************
 #              Load Saved Models
 # ******************************************
-# Load the model
-model = RobertaForSequenceClassification.from_pretrained('Akamemz/RoBERTA_bias_classification', num_labels=3)  # assuming 3 classes for classification
+# Specify the file path for the saved model
+@st.cache(allow_output_mutation=True)
+def load_model():
+    # Download the model file first
+    file_id = '1QulyuNsKiIBED0XGjUhsfVq7YiBXf2sf'
+    url = f'https://drive.google.com/uc?id={file_id}'
+    output = 'model.pth'
+    gdown.download(url, output, quiet=False)
+
+    # Load the model
+    model_RoBERTA = RobertaForSequenceClassification.from_pretrained("roberta-base", num_labels=3)
+    try:
+        model_RoBERTA.load_state_dict(torch.load('model.pth'))
+    except Exception as e:
+        print(f"Error loading the model: {e}")
+    else:
+        print("Model loaded successfully")
+        model_RoBERTA.eval()
+
+    return model_RoBERTA
+
+
+model_RoBERTA = load_model()
 
 tokenizer_RoBERTA = RobertaTokenizer.from_pretrained('roberta-base')
 
@@ -31,10 +52,10 @@ model_pegasus = PegasusForConditionalGeneration.from_pretrained('google/pegasus-
 
 
 # Function to generate summary using Pegasus
-@st.cache_data
+@st.cache_resource
 def summary_pegasus(content):
     inputs = tokenizer_pegasus(content, padding="longest", return_tensors='pt', truncation=True)
-    summary_ids = model_pegasus.generate(inputs.input_ids, num_beams=4, min_length=150, max_length=266,
+    summary_ids = model_pegasus.generate(inputs.input_ids, num_beams=4, min_length=150, max_length=256,
                                           length_penalty=2.0, early_stopping=True)
 
     summary = tokenizer_pegasus.decode(summary_ids[0], skip_special_tokens=True)
@@ -49,9 +70,9 @@ label_map_RoBERTA = {0: "Left", 1: "Center", 2: "Right"}
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Move the model to the selected device
-model_RoBERTA.to(device)
+# model_RoBERTA.to(device)
 
-def predict(text, threshold=0.5):
+def predict(text, threshold=0.3):
     # Tokenize the input text
     inputs = tokenizer_RoBERTA(text, padding=True, truncation=True, return_tensors="pt")
 
@@ -80,9 +101,9 @@ def predict(text, threshold=0.5):
         if predicted_label in label_map_RoBERTA:
             return label_map_RoBERTA[predicted_label], predicted_prob.item()
         else:
-            return "Unknown label", predicted_prob.item()
+            return "Sorry I'm unable to asses class", predicted_prob.item()
     else:
-        return "Unknown label", predicted_prob.item()
+        return "Sorry I'm unable to asses class", predicted_prob.item()
 
 
 
@@ -99,6 +120,9 @@ def initialize_session_state():
 
     if "url_input" not in st.session_state:
         st.session_state.url_input = ""
+
+    if 'text_input' not in st.session_state:
+        st.session_state.text_input = ""
 
 
 # Formate date from %Y-%m-%dT%H:%M:%SZ to %Y-%m-%d
@@ -146,151 +170,148 @@ def is_url(url):
     return bool(re.match(url_pattern, url))
 
 
+@st.cache_data
+def fetch_news_articles(query):
+    url = ('https://newsapi.org/v2/everything?'
+           f'q={query}&'
+           'language=en&'
+           'sortBy=relevancy&'
+           'pageSize=10&'
+           f'apiKey=a91f440fdad74f36a8695761264b3e4c')
+
+    # Make a GET request to the News API
+    response = requests.get(url)
+    return response
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # ----------------------------------------------------------------------------------------------------------------------
 # ******************************************
 #         Main Streamlit application
 # ******************************************
 def main():
-    st.title("NLP Project - Political Bias Detection ")
-    components.iframe("https://docs.google.com/presentation/d/e/2PACX-1vRuDIm9jOMllon851G-aXAnmgSlBFtUXLoFJq8t4koSmlvdCNjbOWkn5jreUxmGWx9ZJJNenOOpKC1r/embed?start=false&loop=false&delayms=3000",
-                      height=509, width=809)
+    # Create tabs
+    tabs = st.tabs(["📖 Slides", "💻 Demo"])
 
-    st.title("Classical Model Evaluation")
-    col1, col2, col3 = st.columns([1, 0.1, 1])
+    with tabs[0]:
+        st.title("NLP Project - Political Bias Detection ")
+        components.iframe("https://docs.google.com/presentation/d/e/2PACX-1vRuDIm9jOMllon851G-aXAnmgSlBFtUXLoFJq8t4koSmlvdCNjbOWkn5jreUxmGWx9ZJJNenOOpKC1r/embed?start=false&loop=false&delayms=3000",
+                          height=509, width=809)
 
-    with col1:
-        st.write("*************************")
-        st.subheader("Naive Regression")
-        for metric, value in naive_metrics.items():
-            st.write(f"{metric}: {value}")
-        st.write("*************************")
-        st.image("confusion_matrix_naive.png")
-        st.markdown(
-            "<small style='color: #6e6e6e; font-size: 12px;'>**Note: 0 - Left; 1 - Center; 2 - Right.</small>",
-            unsafe_allow_html=True)
+        st.title("Classical Model Evaluation")
+        col1, col2, col3 = st.columns([1, 0.1, 1])
 
-    with col2:
-        st.markdown('<div style="height: 70vh; border-left: 1px solid #ccc;"></div>', unsafe_allow_html=True)
+        with col1:
+            st.write("*************************")
+            st.subheader("Naive Regression")
+            for metric, value in naive_metrics.items():
+                st.write(f"{metric}: {value}")
+            st.write("*************************")
+            st.image("confusion_matrix_naive.png")
+            st.markdown(
+                "<small style='color: #6e6e6e; font-size: 12px;'>**Note: 0 - Left; 1 - Center; 2 - Right.</small>",
+                unsafe_allow_html=True)
 
-    with col3:
-        st.write("*************************")
-        st.subheader("Logistic Regression")
-        for metric, value in logistic_metrics.items():
-            st.write(f"{metric}: {value}")
-        st.write("*************************")
-        st.image("confusion_matrix_logistic.png")
+        with col2:
+            st.markdown('<div style="height: 70vh; border-left: 1px solid #ccc;"></div>', unsafe_allow_html=True)
 
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
+        with col3:
+            st.write("*************************")
+            st.subheader("Logistic Regression")
+            for metric, value in logistic_metrics.items():
+                st.write(f"{metric}: {value}")
+            st.write("*************************")
+            st.image("confusion_matrix_logistic.png")
 
-    # **************************************************************
-    # **************************************************************
-    st.title("Neural Network Model Evaluation")
-    col1_n, col2_n, col3_n = st.columns([1, 0.1, 1])
-
-    with col1_n:
-        st.write("*************************")
-        st.subheader("MLP")
-        for metric, value in MLP_metrics.items():
-            st.write(f"{metric}: {value}")
-        st.write("*************************")
-        st.image("MLP_confusion_matrix.png")
-        st.markdown(
-            "<small style='color: #6e6e6e; font-size: 12px;'>**Note: 0 - Left; 1 - Center; 2 - Right.</small>",
-            unsafe_allow_html=True)
-
-    with col2_n:
-        st.markdown('<div style="height: 70vh; border-left: 1px solid #ccc;"></div>', unsafe_allow_html=True)
-
-    with col3_n:
-        st.write("*************************")
-        st.subheader("CNN")
-        for metric, value in CNN_metrics.items():
-            st.write(f"{metric}: {value}")
-        st.write("*************************")
-        st.image("CNN_confusion_matrix.png")
-
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
+        st.divider()
+        st.text(" ")
+        st.text(" ")
+        st.text(" ")
 
     # **************************************************************
     # **************************************************************
+        st.title("Neural Network Model Evaluation")
+        col1_n, col2_n, col3_n = st.columns([1, 0.1, 1])
 
-    st.title("LSTM & RoBERTa Model Evaluation")
-    col1_m, col2_m, col3_m = st.columns([1, 0.1, 1])
+        with col1_n:
+            st.write("*************************")
+            st.subheader("MLP")
+            for metric, value in MLP_metrics.items():
+                st.write(f"{metric}: {value}")
+            st.write("*************************")
+            st.image("MLP_confusion_matrix.png")
+            st.markdown(
+                "<small style='color: #6e6e6e; font-size: 12px;'>**Note: 0 - Left; 1 - Center; 2 - Right.</small>",
+                unsafe_allow_html=True)
 
-    with col1_m:
-        st.write("*************************")
-        st.subheader("RoBERTa Model")
-        for metric, value in model_metrics.items():
-            st.write(f"{metric}: {value}")
-        st.write("*************************")
-        st.image("confusion_matrix_roberta.png")
-        st.markdown(
-            "<small style='color: #6e6e6e; font-size: 12px;'>**Note: 0 - Left; 1 - Center; 2 - Right.</small>",
-            unsafe_allow_html=True)
+        with col2_n:
+            st.markdown('<div style="height: 70vh; border-left: 1px solid #ccc;"></div>', unsafe_allow_html=True)
 
-    with col2_m:
-        st.markdown('<div style="height: 70vh; border-left: 1px solid #ccc;"></div>', unsafe_allow_html=True)
+        with col3_n:
+            st.write("*************************")
+            st.subheader("CNN")
+            for metric, value in CNN_metrics.items():
+                st.write(f"{metric}: {value}")
+            st.write("*************************")
+            st.image("CNN_confusion_matrix.png")
 
-    with col3_m:
-        st.write("*************************")
-        st.subheader("LSTM")
-        for metric, value in LSTM_metrics.items():
-            st.write(f"{metric}: {value}")
-        st.write("*************************")
-        st.image("CNN_confusion_matrix.png")
+        st.divider()
+        st.text(" ")
+        st.text(" ")
+        st.text(" ")
+
     # **************************************************************
     # **************************************************************
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
+
+        st.title("LSTM & RoBERTa Model Evaluation")
+        col1_m, col2_m, col3_m = st.columns([1, 0.1, 1])
+
+        with col1_m:
+            st.write("*************************")
+            st.subheader("RoBERTa Model")
+            for metric, value in model_metrics.items():
+                st.write(f"{metric}: {value}")
+            st.write("*************************")
+            st.image("confusion_matrix_roberta.png")
+            st.markdown(
+                "<small style='color: #6e6e6e; font-size: 12px;'>**Note: 0 - Left; 1 - Center; 2 - Right.</small>",
+                unsafe_allow_html=True)
+
+        with col2_m:
+            st.markdown('<div style="height: 70vh; border-left: 1px solid #ccc;"></div>', unsafe_allow_html=True)
+
+        with col3_m:
+            st.write("*************************")
+            st.subheader("LSTM")
+            for metric, value in LSTM_metrics.items():
+                st.write(f"{metric}: {value}")
+            st.write("*************************")
+            st.image("CNN_confusion_matrix.png")
+
+    # **************************************************************
     # **************************************************************
 
+    with tabs[1]:
+        st.title("Lets test it out For Real")
+        initialize_session_state()
+        st.image('banner 19.23.09.png')
+        st.title("Search News Articles Or Simply paste url from any news source or text")
 
-    st.title("Lets test it out For Real")
+        # Get user query for news articles
+        user_query, url_input, text_input = st.columns(3)
 
-    initialize_session_state()
+        with user_query:
+            st.session_state.query_enter = st.text_input("Search for news articles here:", st.session_state.query_enter)
 
-    st.image('banner 19.23.09.png')
+        with url_input:
+            st.session_state.url_input = st.text_input("Paste the URL here:", st.session_state.url_input)
 
-    st.title("Search News Articles Or Simply past url from any news source")
-    st.subheader("You will get most relevant and new articles")
+        with text_input:
+            st.session_state.text_input = st.text_input("Enter text here:", st.session_state.text_input)
 
-    st.text(" ")
-    st.text(" ")
-    st.text(" ")
-    # st.markdown("""<hr style="height:2px;border:none;color:#333;
-    # background-color:#333;" /> """, unsafe_allow_html=True)
+        if st.session_state.url_input:
+            user_query = is_url(st.session_state.url_input)
 
-    # Get user query for news articles
-    user_query = st.text_input("Search for news articles or paste the URL", st.session_state.query_enter)
-
-    if user_query:
-        if is_url(user_query):
             # If the user input is a valid URL, fetch and process the article
             article_full = Article(user_query)
             article_full.download()
@@ -305,29 +326,18 @@ def main():
                     st.write(article_full.text)
             else:
                 st.write(f"**Full content:** {article_full.text}")
-            # **************************************
-            summary = summary_pegasus(article_full.text)
-            st.write(f"**Summary:** {summary}")
-            # Make prediction using the model
-            prediction = predict(article_full.text)
-            # Display the prediction to the user
-            st.write("Predicted class (Roberta):", prediction)
-            # **************************************
+                # **************************************
+                summary = summary_pegasus(article_full.text)
+                st.write(f"**Summary:** {summary}")
+                prediction = predict(summary)
+                st.write("Predicted class (Roberta):", prediction)
+                # **************************************
 
-        else:
-            # If the user input is not a valid URL, search for articles using the News API
-            st.session_state.query = user_query
-
-            # Construct the URL with query parameters including date filter
-            url = ('https://newsapi.org/v2/everything?'
-                   f'q={user_query}&'
-                   'language=en&'
-                   'sortBy=relevancy&'
-                   'pageSize=10&'
-                   f'apiKey=a91f440fdad74f36a8695761264b3e4c')
-
-            # Make a GET request to the News API
-            response = requests.get(url)
+        # ************************************************************************************************
+        # ************************************************************************************************
+        elif st.session_state.query_enter:
+            user_query = st.session_state.query_enter
+            response = fetch_news_articles(user_query)
 
             # Check if the request was successful (status code 200)
             if response.status_code == 200:
@@ -363,15 +373,38 @@ def main():
                             st.write(f"**Summary:** {summary}")
                             # **************************************
                             # Make prediction using the model
-                            prediction = predict(article_full.text)
+                            prediction = predict(summary)
                             # Display the prediction to the user
                             st.write("Predicted class (Roberta):", prediction)
                             # **************************************
+                    else:
+                        st.warning("No articles found for the given query.")
                 else:
-                    st.warning("No articles found for the given query.")
+                    # Print an error message if the request failed
+                    st.error("Failed to fetch news articles. Please check your API key and try again.")
+
+        # ************************************************************************************************
+        # ************************************************************************************************
+        elif st.session_state.text_input:
+
+            MAX_PREVIEW_LENGTH = 356
+
+            if len(st.session_state.text_input) > MAX_PREVIEW_LENGTH:
+                truncated_text = st.session_state.text_input[:MAX_PREVIEW_LENGTH] + "..."
+                with st.expander("Preview", expanded=True):
+                    st.write(truncated_text)
+                with st.expander("Full Content"):
+                    st.write(st.session_state.text_input)
             else:
-                # Print an error message if the request failed
-                st.error("Failed to fetch news articles. Please check your API key and try again.")
+                st.write(f"**Full content:** {st.session_state.text_input}")
+            # **************************************
+            summary = summary_pegasus(st.session_state.text_input)
+            st.write(f"**Summary:** {summary}")
+            # Make prediction using the model
+            prediction = predict(summary)
+            # Display the prediction to the user
+            st.write("Predicted class (Roberta):", prediction)
+            # **************************************
 
 
 if __name__ == "__main__":
