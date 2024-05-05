@@ -16,18 +16,18 @@ import gdown
 #              Load Saved Models
 # ******************************************
 # Specify the file path for the saved model
-@st.cache_resource()
-def load_model(device='cpu'):
+@st.cache_resource
+def load_model():
     # Download the model file first
     file_id = '1QulyuNsKiIBED0XGjUhsfVq7YiBXf2sf'
     url = f'https://drive.google.com/uc?id={file_id}'
     output = 'model.pth'
     gdown.download(url, output, quiet=False)
 
-    # Load the model on the specified device
+    # Load the model
     model_RoBERTA = RobertaForSequenceClassification.from_pretrained("roberta-base", num_labels=3)
     try:
-        model_RoBERTA.load_state_dict(torch.load('model.pth', map_location=device))
+        model_RoBERTA.load_state_dict(torch.load('model.pth'))
     except Exception as e:
         print(f"Error loading the model: {e}")
     else:
@@ -36,9 +36,10 @@ def load_model(device='cpu'):
 
     return model_RoBERTA
 
+
 model_RoBERTA = load_model()
 
-tokenizer_RoBERTA = RobertaTokenizer.from_pretrained('roberta-base', use_fast=False)
+tokenizer_RoBERTA = RobertaTokenizer.from_pretrained('roberta-base')
 
 
 # ******************************************
@@ -70,45 +71,38 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Move the model to the selected device
 # model_RoBERTA.to(device)
 
-def predict(texts, threshold=0.3):
-    # Move the model to CPU
-    model_RoBERTA.to('cpu')
-    
-    # Tokenize the input texts
-    inputs = [tokenizer_RoBERTA(text, padding=True, truncation=True, return_tensors="pt") for text in texts]
-
-    # Batch processing: Stack tensors into a single tensor
-    batch_inputs = {key: torch.stack([inp[key][0] for inp in inputs]) for key in inputs[0].keys()}
+def predict(text, threshold=0.3):
+    # Tokenize the input text
+    inputs = tokenizer_RoBERTA(text, padding=True, truncation=True, return_tensors="pt")
 
     # Move the input tensors to the same device as the model
-    batch_inputs = {key: value.to(device) for key, value in batch_inputs.items()}
+    inputs = {key: value.to(device) for key, value in inputs.items()}  # Assuming you've defined `device`
 
     # Forward pass through the model
     with torch.no_grad():
-        outputs = model_RoBERTA(**batch_inputs)
+        outputs = model_RoBERTA(**inputs)
 
     # Get the predicted probabilities
     probabilities = torch.softmax(outputs.logits, dim=-1)
 
-    # Get the index of the class with the highest probability for each example
-    predicted_class_indices = torch.argmax(probabilities, dim=-1)
+    # Get the index of the class with the highest probability
+    predicted_class_idx = torch.argmax(probabilities)
 
-    # Get the probability of the predicted class for each example
-    predicted_probs = torch.max(probabilities, dim=-1).values
+    # Get the probability of the predicted class
+    predicted_prob = probabilities[0][predicted_class_idx]
 
-    predictions = []
-    for idx, prob in zip(predicted_class_indices, predicted_probs):
-        if prob >= threshold:
-            predicted_label = idx.item()
-            if predicted_label in label_map_RoBERTA:
-                predictions.append((label_map_RoBERTA[predicted_label], prob.item()))
-            else:
-                predictions.append(("Sorry I'm unable to asses class", prob.item()))
+    # Check if the predicted probability is above the threshold
+    if predicted_prob.item() >= threshold:
+        # Map the index to the actual label
+        predicted_label = predicted_class_idx.item()
+
+        # Get the corresponding label from the dictionary
+        if predicted_label in label_map_RoBERTA:
+            return label_map_RoBERTA[predicted_label], predicted_prob.item()
         else:
-            predictions.append(("Sorry I'm unable to asses class", prob.item()))
-
-    return predictions
-
+            return "Sorry I'm unable to asses class", predicted_prob.item()
+    else:
+        return "Sorry I'm unable to asses class", predicted_prob.item()
 
 
 
