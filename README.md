@@ -13,3 +13,7 @@ This repository contains tools and models for detecting political bias in news a
 - **Rich Dataset:** Newspaper Bias Dataset (NewB) created by Jerry Wei and an Article-Bias-Prediction dataset created from allsides.com by Ramy Baly. The Article-Bias-Prediction dataset contains a total of 37,554 articles labeled by political bias.
 - **Model Architectures:** This project utilizes the RoBERTa (Robustly optimized BERT approach) transformer-based model for sequence classification. The RoBERTa model is fine-tuned to classify news articles into three categories: left, center, or right political biases. It employs tokenization and attention mechanisms to process input data efficiently and achieve accurate classification results and was trained on Bias Dataset (NewB).
 - **News API:** This peoject has integrated API from https://newsapi.org/ for scrapping relavant articles. Please note that the free version is being utilized and there are limitations such as 100 requests per day, only the most recent articles published within the month, and many more please refer to https://newsapi.org/docs for additional information on limitations and information on the utilization of NewsAPI.
+
+
+
+P.S. You can use https://www.allsides.com/unbiased-balanced-news website to check the accuracy of the model or simply to have the reference for comparison. 
