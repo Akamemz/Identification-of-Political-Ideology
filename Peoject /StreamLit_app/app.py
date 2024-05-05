@@ -2,15 +2,14 @@
 #               Load Libraries
 # ******************************************
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 from datetime import datetime
 from newspaper import Article
+from urllib.parse import urlparse
 import torch
 from transformers import PegasusForConditionalGeneration, PegasusTokenizer
 from transformers import RobertaForSequenceClassification, RobertaTokenizer
 import gdown
-import re
 
 
 # ******************************************
@@ -121,9 +120,6 @@ def initialize_session_state():
     if "url_input" not in st.session_state:
         st.session_state.url_input = ""
 
-    if 'text_input' not in st.session_state:
-        st.session_state.text_input = ""
-
 
 # Formate date from %Y-%m-%dT%H:%M:%SZ to %Y-%m-%d
 def formated_date(published_at):
@@ -166,9 +162,11 @@ model_metrics = {
 
 
 def is_url(url):
-    url_pattern = r'^https?://'
-    return bool(re.match(url_pattern, url))
-
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
 
 @st.cache_data
 def fetch_news_articles(query):
@@ -191,12 +189,16 @@ def fetch_news_articles(query):
 # ******************************************
 def main():
     # Create tabs
-    tabs = st.tabs(["📖 Slides", "💻 Demo"])
+    tabs = st.tabs(["📖 Overview", "💻 Demo"])
 
     with tabs[0]:
         st.title("NLP Project - Political Bias Detection ")
-        components.iframe("https://docs.google.com/presentation/d/e/2PACX-1vRuDIm9jOMllon851G-aXAnmgSlBFtUXLoFJq8t4koSmlvdCNjbOWkn5jreUxmGWx9ZJJNenOOpKC1r/embed?start=false&loop=false&delayms=3000",
-                          height=509, width=809)
+        st.subheader("Here you will fined comparison of multiple NLP modes that were used in the training process")
+
+        st.divider()
+        st.text(" ")
+        st.text(" ")
+        st.text(" ")
 
         st.title("Classical Model Evaluation")
         col1, col2, col3 = st.columns([1, 0.1, 1])
@@ -287,6 +289,7 @@ def main():
                 st.write(f"{metric}: {value}")
             st.write("*************************")
             st.image("CNN_confusion_matrix.png")
+        st.divider()
 
     # **************************************************************
     # **************************************************************
@@ -298,114 +301,87 @@ def main():
         st.title("Search News Articles Or Simply paste url from any news source or text")
 
         # Get user query for news articles
-        user_query, url_input, text_input = st.columns(3)
+        user_query = st.text_input("Search for news articles or paste the URL", st.session_state.query_enter)
 
-        with user_query:
-            st.session_state.query_enter = st.text_input("Search for news articles here:", st.session_state.query_enter)
+        if user_query:
+            if is_url(user_query):
+                # If the user input is a valid URL, fetch and process the article
+                article_full = Article(user_query)
+                article_full.download()
+                article_full.parse()
+                MAX_PREVIEW_LENGTH = 400
 
-        with url_input:
-            st.session_state.url_input = st.text_input("Paste the URL here:", st.session_state.url_input)
-
-        with text_input:
-            st.session_state.text_input = st.text_input("Enter text here:", st.session_state.text_input)
-
-        if st.session_state.url_input:
-            user_query = is_url(st.session_state.url_input)
-
-            # If the user input is a valid URL, fetch and process the article
-            article_full = Article(user_query)
-            article_full.download()
-            article_full.parse()
-            MAX_PREVIEW_LENGTH = 400
-
-            if len(article_full.text) > MAX_PREVIEW_LENGTH:
-                truncated_text = article_full.text[:MAX_PREVIEW_LENGTH] + "..."
-                with st.expander("Preview", expanded=True):
-                    st.write(truncated_text)
-                with st.expander("Full Content"):
-                    st.write(article_full.text)
-            else:
-                st.write(f"**Full content:** {article_full.text}")
+                if len(article_full.text) > MAX_PREVIEW_LENGTH:
+                    truncated_text = article_full.text[:MAX_PREVIEW_LENGTH] + "..."
+                    with st.expander("Preview", expanded=True):
+                        st.write(truncated_text)
+                    with st.expander("Full Content"):
+                        st.write(article_full.text)
+                else:
+                    st.write(f"**Full content:** {article_full.text}")
                 # **************************************
                 summary = summary_pegasus(article_full.text)
                 st.write(f"**Summary:** {summary}")
-                prediction = predict(summary)
+                # Make prediction using the model
+                prediction = predict(article_full.text)
+                # Display the prediction to the user
                 st.write("Predicted class (Roberta):", prediction)
                 # **************************************
 
-        # ************************************************************************************************
-        # ************************************************************************************************
-        elif st.session_state.query_enter:
-            user_query = st.session_state.query_enter
-            response = fetch_news_articles(user_query)
+            else:
+                # If the user input is not a valid URL, search for articles using the News API
+                st.session_state.query = user_query
 
-            # Check if the request was successful (status code 200)
-            if response.status_code == 200:
-                # Extract and display the titles of the articles
-                data = response.json()
-                # total_results = data['totalResults']  <--- Uncomment this
-                articles = data['articles']
-                if articles:
-                    st.success("News articles fetched successfully!")
-                    # st.write(f"Total results: {total_results}")   <--- To get all the possible results
-                    st.write("Select an article to view more details:")
-                    for index, article in enumerate(articles):
-                        st.write(f"{index + 1}. {article['title']} - {formated_date(article['publishedAt'])}")
-                        if st.button(f"View full content of article {index + 1}"):
-                            st.write(f"**Source:** {article['source']['name']}")
-                            st.write(f"**Url:** {article['url']}")
-                            # **************************************
-                            article_full = Article(article['url'])
-                            article_full.download()
-                            article_full.parse()
-                            MAX_PREVIEW_LENGTH = 400
+                url = fetch_news_articles(user_query)
 
-                            if len(article_full.text) > MAX_PREVIEW_LENGTH:
-                                truncated_text = article_full.text[:MAX_PREVIEW_LENGTH] + "..."
-                                with st.expander("Preview", expanded=True):
-                                    st.write(truncated_text)
-                                with st.expander("Full Content"):
-                                    st.write(article_full.text)
-                            else:
-                                st.write(f"**Full content:** {article_full.text}")
-                            # **************************************
-                            summary = summary_pegasus(article_full.text)
-                            st.write(f"**Summary:** {summary}")
-                            # **************************************
-                            # Make prediction using the model
-                            prediction = predict(summary)
-                            # Display the prediction to the user
-                            st.write("Predicted class (Roberta):", prediction)
-                            # **************************************
+                # Make a GET request to the News API
+                response = requests.get(url)
+
+                # Check if the request was successful (status code 200)
+                if response.status_code == 200:
+                    # Extract and display the titles of the articles
+                    data = response.json()
+                    # total_results = data['totalResults']  <--- Uncomment this
+                    articles = data['articles']
+                    if articles:
+                        st.success("News articles fetched successfully!")
+                        # st.write(f"Total results: {total_results}")   <--- To get all the possible results
+                        st.write("Select an article to view more details:")
+                        for index, article in enumerate(articles):
+                            st.write(f"{index + 1}. {article['title']} - {formated_date(article['publishedAt'])}")
+                            if st.button(f"View full content of article {index + 1}"):
+                                st.write(f"**Source:** {article['source']['name']}")
+                                st.write(f"**Url:** {article['url']}")
+                                # **************************************
+                                article_full = Article(article['url'])
+                                article_full.download()
+                                article_full.parse()
+                                MAX_PREVIEW_LENGTH = 400
+
+                                if len(article_full.text) > MAX_PREVIEW_LENGTH:
+                                    truncated_text = article_full.text[:MAX_PREVIEW_LENGTH] + "..."
+                                    with st.expander("Preview", expanded=True):
+                                        st.write(truncated_text)
+                                    with st.expander("Full Content"):
+                                        st.write(article_full.text)
+                                else:
+                                    st.write(f"**Full content:** {article_full.text}")
+                                # **************************************
+                                summary = summary_pegasus(article_full.text)
+                                st.write(f"**Summary:** {summary}")
+                                # **************************************
+                                # Make prediction using the model
+                                prediction = predict(article_full.text)
+                                # Display the prediction to the user
+                                st.write("Predicted class (Roberta):", prediction)
+                                # **************************************
                     else:
                         st.warning("No articles found for the given query.")
                 else:
                     # Print an error message if the request failed
                     st.error("Failed to fetch news articles. Please check your API key and try again.")
 
-        # ************************************************************************************************
-        # ************************************************************************************************
-        elif st.session_state.text_input:
-
-            MAX_PREVIEW_LENGTH = 356
-
-            if len(st.session_state.text_input) > MAX_PREVIEW_LENGTH:
-                truncated_text = st.session_state.text_input[:MAX_PREVIEW_LENGTH] + "..."
-                with st.expander("Preview", expanded=True):
-                    st.write(truncated_text)
-                with st.expander("Full Content"):
-                    st.write(st.session_state.text_input)
-            else:
-                st.write(f"**Full content:** {st.session_state.text_input}")
-            # **************************************
-            summary = summary_pegasus(st.session_state.text_input)
-            st.write(f"**Summary:** {summary}")
-            # Make prediction using the model
-            prediction = predict(summary)
-            # Display the prediction to the user
-            st.write("Predicted class (Roberta):", prediction)
-            # **************************************
-
 
 if __name__ == "__main__":
     main()
+
